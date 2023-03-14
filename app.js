@@ -1,40 +1,97 @@
 const express = require('express');
-const path = require('path')
-const mongoose = require('mongoose');
-// const passportLocalMongoose = require('passport-local-mongoose');
-// const User = require('./models/User');
-const app = express();
-const session = app.require('express-session')
-const Passport = require('./config/passport')
-const errorHandler = require('errorhandler');
-const isProduction = process.env.NODE_ENV === 'production';
+const path = require('path');
+const bodyParser = require('body-parser');
+const session = require('express-session');
 const cors = require('cors');
+const mongoose = require('mongoose');
+const errorHandler = require('errorhandler');
+const MongoStore = require('connect-mongo')(session)
 
-mongoose.promise = global.promise
 
+const dbString = 'mongodb://localhost/passport-tutorial'
+const dbOptions = {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+}
 
+const connection = mongoose.createConnection(dbString,dbOptions)
+const sessionStore = new MongoStore({
+    mongooseConnection: connection,
+    colection:'sessions'
+})
 
+//Configure mongoose's promise to global promise
+mongoose.promise = global.Promise;
 
-app.use(express.urlencoded({extended: false}));
-app.use(express.static('static'))
-app.use(cors())
+//Configure isProduction variable
+const isProduction = process.env.NODE_ENV === 'production';
 
+//Initiate our app
+const app = express();
+
+//Configure our app
+app.use(cors());
+app.use(require('morgan')('dev'));
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+app.use(require('./routes'));
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(session({
-    secret:"thisismysecretkeyandshouldn'tbeoutintheopen",
+    secret: "thisismysecretkeyandshouldn'tbeoutintheopen",
     saveUninitialized: true,
     resave: true,
 }))
 
-app.use(passport.initialize());
-app.use(passport.session());
+if (!isProduction) {
+    app.use(errorHandler());
+}
+
+//Configure Mongoose
+mongoose.connect('mongodb://localhost/passport-tutorial',{
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+}).then(()=>console.log("connected to mongodb")
+.catch((err)=>console.error('error connecting to database')));
+
+mongoose.set('debug', true);
+
+//Error handlers & middlewares
+if (!isProduction) {
+    app.use((err, req, res, next) => {
+        res.status(200).send('Hello, world!');
+
+        res.json({
+            errors: {
+                message: err.message,
+                error: err,
+            },
+        });
+    });
+}
+
+app.use((err, req, res, next) => {
+    res.status(200).send('Hero, world!');
+
+    res.json({
+        errors: {
+            message: err.message,
+            error: {},
+        },
+    });
+});
+
+
+
+// app.use(passport.initialize());
+// app.use(passport.session());
 
 
 // passport.use(new LocalStrategy(User.authenticate()));
 // passport.serializeUser(User.serializeUser());
 // passport.deserializeUser(User.deserializeUser());
 
-mongoose.connect("mongodb://localhost/27017");
-mongoose.set('debug',true)
+// mongoose.connect("mongodb://localhost/27017");
+// mongoose.set('debug',true)
 app.get('/',(req,res)=>{
     res.sendFile(__dirname +'/static/index.html')
 })
@@ -51,4 +108,4 @@ app.post('/login',(req,res)=>{
 })
 
 const port = 3000
-app.listen(port, () => console.log(`this app is listening on port ${port}`));
+app.listen(8000, () => console.log('Server running on http://localhost:8000/'));
