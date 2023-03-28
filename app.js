@@ -3,39 +3,53 @@ const path = require('path');
 const bodyParser = require('body-parser');
 const session = require('express-session');
 const cors = require('cors');
-const mongoose = require('mongoose');
+const flash = require('connect-flash');
 const errorHandler = require('errorhandler');
-const MongoStore = require('connect-mongo')(session)
+const dotenv = require('dotenv')
+const uuid = require('uuid')
+const WebSocket =require('ws')
+const socket = new WebSocket.Server({ port: 8080 });
+
+dotenv.config({ path: './.env' })
+const mysql = require('mysql')
 
 
-const dbString = 'mongodb://localhost/passport-tutorial'
-const dbOptions = {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-}
-
-const connection = mongoose.createConnection(dbString,dbOptions)
-const sessionStore = new MongoStore({
-    mongooseConnection: connection,
-    colection:'sessions'
+const db = mysql.createConnection({
+    host: process.env.DATABASE_HOST,
+    user: process.env.DATABASE_ROOT,
+    password: process.env.DATABASE_PASSWORD,
+    database: process.env.DATABASE
 })
 
-//Configure mongoose's promise to global promise
-mongoose.promise = global.Promise;
+socket.on('open', ()=>{
+    console.log('socket connected to server')
+})
+db.query('SELECT 1', (error) => {
+    if (error) {
+        console.log(error)
+    } else {
+        console.log("Mysql connected")
+    }
+
+})
+
 
 //Configure isProduction variable
 const isProduction = process.env.NODE_ENV === 'production';
 
 //Initiate our app
 const app = express();
+// Set up flash messages middleware
 
 //Configure our app
 app.use(cors());
+app.set('view engine','ejs')
 app.use(require('morgan')('dev'));
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
-app.use(require('./routes'));
-app.use(express.static(path.join(__dirname, 'public')));
+require('./models/User');
+app.use(flash());
+app.use(express.static(path.join(__dirname, 'views')));
 app.use(session({
     secret: "thisismysecretkeyandshouldn'tbeoutintheopen",
     saveUninitialized: true,
@@ -45,17 +59,6 @@ app.use(session({
 if (!isProduction) {
     app.use(errorHandler());
 }
-
-//Configure Mongoose
-mongoose.connect('mongodb://localhost/passport-tutorial',{
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-}).then(()=>console.log("connected to mongodb")
-.catch((err)=>console.error('error connecting to database')));
-
-mongoose.set('debug', true);
-
-//Error handlers & middlewares
 if (!isProduction) {
     app.use((err, req, res, next) => {
         res.status(200).send('Hello, world!');
@@ -71,6 +74,7 @@ if (!isProduction) {
 
 app.use((err, req, res, next) => {
     res.status(200).send('Hero, world!');
+    console.log("what's this line do")
 
     res.json({
         errors: {
@@ -80,24 +84,12 @@ app.use((err, req, res, next) => {
     });
 });
 
-
-
-// app.use(passport.initialize());
-// app.use(passport.session());
-
-
-// passport.use(new LocalStrategy(User.authenticate()));
-// passport.serializeUser(User.serializeUser());
-// passport.deserializeUser(User.deserializeUser());
-
-// mongoose.connect("mongodb://localhost/27017");
-// mongoose.set('debug',true)
 app.get('/',(req,res)=>{
-    res.sendFile(__dirname +'/static/index.html')
+    res.render(__dirname +'/views/index')
 })
 
 app.get('/login', (req,res)=>{
-    res.sendFile(__dirname + '/static/login.html')
+    res.render('login', {messages: ''})
 })
 
 app.post('/login',(req,res)=>{
@@ -107,5 +99,47 @@ app.post('/login',(req,res)=>{
     res.send(`Password: ${password} Email: ${email}`);
 })
 
-const port = 3000
-app.listen(8000, () => console.log('Server running on http://localhost:8000/'));
+app.post('/signup', (req, res) => {
+    const { name, email, username, password } = req.body;
+    const userId = uuid.v4();
+    const User = {name, email, username, password, userId}
+
+    db.query('SELECT * FROM users where email = ?', email, (error,results)=>{
+        if (results.length > 0) {
+            const user = results[0];
+            if (user.email === email) {
+            console.log("email already exists")
+            const message = "email already exists please sign in instead";
+            socket.clients.forEach((client) => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify({ message }));
+                }
+                
+            });
+            } else {
+                console.log('not email')
+            }
+        } else {
+            db.query('INSERT into users SET ?',User,(error, results)=>{
+                if (error){
+                    console.log(error)
+                    res.status(500).json({ error: "Internal server error" });
+                }else{
+                    const message = "Signup successful. Please log in to continue";
+                    wss.clients.forEach((client) => {
+                        if (client.readyState === WebSocket.OPEN) {
+                            client.send(JSON.stringify({ message }));
+                    }
+                });
+            }
+        });
+    }
+
+})
+
+
+})
+
+    // Check if email already exists
+
+app.listen(7000, () => console.log('Server running on http://localhost:7000/'));

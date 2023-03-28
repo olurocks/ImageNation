@@ -1,14 +1,14 @@
 const mongoose = require('mongoose')
 const crypto = require('crypto')
-const jwt = require('jsonnwebtoken')
+const jwt = require('jsonwebtoken')
 const Schema = mongoose.Schema
 const passportLocalMongoose = require('passport-local-mongoose');
 
 
 const Userschema = new Schema({
-    email: string,
-    hash: string,
-    salt: string, 
+    email: String,
+    hash: String,
+    salt: String, 
 })
 
 Userschema.methods.setPassword = function(password){
@@ -16,12 +16,12 @@ Userschema.methods.setPassword = function(password){
     this.hash = crypto.pbkdf2Sync(password, this.salt, 10000, 512, 'sha512').toString('hex')
 }
 
-UsersSchema.methods.validatePassword = function (password) {
+Userschema.methods.validatePassword = function (password) {
     const hash = crypto.pbkdf2Sync(password, this.salt, 10000, 512, 'sha512').toString('hex');
     return this.hash === hash;
 };
 
-UsersSchema.methods.generateJWT = function () {
+Userschema.methods.generateJWT = function () {
     const today = new Date();
     const expirationDate = new Date(today);
     expirationDate.setDate(today.getDate() + 60);
@@ -34,7 +34,7 @@ UsersSchema.methods.generateJWT = function () {
 }
 
 
-UsersSchema.methods.toAuthJSON = function () {
+Userschema.methods.toAuthJSON = function () {
     return {
         _id: this._id,
         email: this.email,
@@ -42,4 +42,4 @@ UsersSchema.methods.toAuthJSON = function () {
     };
 };
 
-mongoose.model('Users', UsersSchema);
+mongoose.model('Users', Userschema)
